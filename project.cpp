@@ -12,7 +12,7 @@ private:
     double balance;
 
 public:
-    Account() {}
+    Account() : accountNumber(0), balance(0.0) {}
 
     // Function to create a new account
     void createAccount() {
@@ -59,26 +59,44 @@ public:
         return balance;
     }
 
-    // Function to set account details from a binary file
-    void setAccountDetails(int accNum, string holderName, double accBalance) {
-        accountNumber = accNum;
-        accountHolderName = holderName;
-        balance = accBalance;
+    // Function to return account holder's name
+    string getAccountHolderName() const {
+        return accountHolderName;
     }
 
-    // Function to get account details as a string
-    string getAccountDetails() const {
-        return "Account Number: " + to_string(accountNumber) + ", " +
-               "Account Holder: " + accountHolderName + ", " +
-               "Balance: $" + to_string(balance);
+    // Serialization: Function to write account data to file
+    void writeToFile(ofstream& outFile) const {
+        int nameLength = accountHolderName.length();
+        outFile.write(reinterpret_cast<const char*>(&accountNumber), sizeof(accountNumber));
+        outFile.write(reinterpret_cast<const char*>(&nameLength), sizeof(nameLength));
+        outFile.write(accountHolderName.c_str(), nameLength);
+        outFile.write(reinterpret_cast<const char*>(&balance), sizeof(balance));
+    }
+
+    // Deserialization: Function to read account data from file
+    void readFromFile(ifstream& inFile) {
+        int nameLength;
+        inFile.read(reinterpret_cast<char*>(&accountNumber), sizeof(accountNumber));
+        inFile.read(reinterpret_cast<char*>(&nameLength), sizeof(nameLength));
+        
+        char* nameBuffer = new char[nameLength + 1];
+        inFile.read(nameBuffer, nameLength);
+        nameBuffer[nameLength] = '\0';  // Null-terminate the string
+        accountHolderName = string(nameBuffer);
+        delete[] nameBuffer;
+
+        inFile.read(reinterpret_cast<char*>(&balance), sizeof(balance));
     }
 };
 
 // Function to write account data to file
-void writeAccount(Account& account) {
-    ofstream outFile;
-    outFile.open("accounts.dat", ios::binary | ios::app);
-    outFile.write(reinterpret_cast<char*>(&account), sizeof(Account));
+void writeAccount(const Account& account) {
+    ofstream outFile("accounts.dat", ios::binary | ios::app);
+    if (!outFile) {
+        cout << "Error opening file for writing.\n";
+        return;
+    }
+    account.writeToFile(outFile);
     outFile.close();
 }
 
@@ -86,14 +104,19 @@ void writeAccount(Account& account) {
 vector<Account> readAccounts() {
     vector<Account> accounts;
     Account account;
-    ifstream inFile;
-    inFile.open("accounts.dat", ios::binary);
+    ifstream inFile("accounts.dat", ios::binary);
     if (!inFile) {
         cout << "File could not be opened!\n";
         return accounts;
     }
-    while (inFile.read(reinterpret_cast<char*>(&account), sizeof(Account))) {
-        accounts.push_back(account);
+    while (true) {
+        account.readFromFile(inFile);
+        if (inFile.eof()) {
+            break;  // Stop reading if EOF is reached
+        }
+        if (inFile) {  // Only add to the vector if reading was successful
+            accounts.push_back(account);
+        }
     }
     inFile.close();
     return accounts;
@@ -112,6 +135,12 @@ void bubbleSort(vector<Account>& accounts) {
 
 // Function to display all accounts
 void displayAllAccounts(const vector<Account>& accounts) {
+    if (accounts.empty()) {
+        cout << "No accounts available.\n";
+        return;
+    }
+
+    // Displaying all accounts in sorted order
     for (const auto& account : accounts) {
         account.displayAccount();
     }
@@ -121,16 +150,17 @@ void displayAllAccounts(const vector<Account>& accounts) {
 void displayAccount(int accNum) {
     Account account;
     bool found = false;
-    ifstream inFile;
-    inFile.open("accounts.dat", ios::binary);
+    ifstream inFile("accounts.dat", ios::binary);
     if (!inFile) {
         cout << "File could not be opened!\n";
         return;
     }
-    while (inFile.read(reinterpret_cast<char*>(&account), sizeof(Account))) {
-        if (account.getAccountNumber() == accNum) {
+    while (inFile) {
+        account.readFromFile(inFile);
+        if (inFile && account.getAccountNumber() == accNum) {
             account.displayAccount();
             found = true;
+            break;
         }
     }
     inFile.close();
@@ -141,80 +171,72 @@ void displayAccount(int accNum) {
 
 // Function to deposit money into an account
 void depositMoney(int accNum, double amount) {
-    Account account;
-    fstream file;
+    vector<Account> accounts = readAccounts();
     bool found = false;
-    file.open("accounts.dat", ios::binary | ios::in | ios::out);
-    if (!file) {
-        cout << "File could not be opened!\n";
-        return;
-    }
-    while (!file.eof() && found == false) {
-        file.read(reinterpret_cast<char*>(&account), sizeof(Account));
+    for (auto& account : accounts) {
         if (account.getAccountNumber() == accNum) {
             account.deposit(amount);
-            int pos = (-1) * static_cast<int>(sizeof(Account));
-            file.seekp(pos, ios::cur);
-            file.write(reinterpret_cast<char*>(&account), sizeof(Account));
             found = true;
+            break;
         }
     }
-    file.close();
-    if (!found) {
+
+    if (found) {
+        // Write modified accounts back to the file
+        ofstream outFile("accounts.dat", ios::binary | ios::trunc);  // Clear file and rewrite
+        for (const auto& account : accounts) {
+            account.writeToFile(outFile);
+        }
+        cout << "Deposit successful.\n";
+    } else {
         cout << "Account not found!\n";
     }
 }
 
 // Function to withdraw money from an account
 void withdrawMoney(int accNum, double amount) {
-    Account account;
-    fstream file;
+    vector<Account> accounts = readAccounts();
     bool found = false;
-    file.open("accounts.dat", ios::binary | ios::in | ios::out);
-    if (!file) {
-        cout << "File could not be opened!\n";
-        return;
-    }
-    while (!file.eof() && found == false) {
-        file.read(reinterpret_cast<char*>(&account), sizeof(Account));
+    for (auto& account : accounts) {
         if (account.getAccountNumber() == accNum) {
             account.withdraw(amount);
-            int pos = (-1) * static_cast<int>(sizeof(Account));
-            file.seekp(pos, ios::cur);
-            file.write(reinterpret_cast<char*>(&account), sizeof(Account));
             found = true;
+            break;
         }
     }
-    file.close();
-    if (!found) {
+
+    if (found) {
+        // Write modified accounts back to the file
+        ofstream outFile("accounts.dat", ios::binary | ios::trunc);  // Clear file and rewrite
+        for (const auto& account : accounts) {
+            account.writeToFile(outFile);
+        }
+        cout << "Withdrawal successful.\n";
+    } else {
         cout << "Account not found!\n";
     }
 }
 
 // Function to delete an account
 void deleteAccount(int accNum) {
-    Account account;
-    ifstream inFile;
-    ofstream outFile;
-    inFile.open("accounts.dat", ios::binary);
-    if (!inFile) {
-        cout << "File could not be opened!\n";
-        return;
-    }
-    outFile.open("temp.dat", ios::binary);
+    vector<Account> accounts = readAccounts();
     bool found = false;
-    while (inFile.read(reinterpret_cast<char*>(&account), sizeof(Account))) {
-        if (account.getAccountNumber() != accNum) {
-            outFile.write(reinterpret_cast<char*>(&account), sizeof(Account));
-        } else {
+
+    // Remove the account from the vector
+    for (auto it = accounts.begin(); it != accounts.end(); ++it) {
+        if (it->getAccountNumber() == accNum) {
+            accounts.erase(it);
             found = true;
+            break;
         }
     }
-    inFile.close();
-    outFile.close();
-    remove("accounts.dat");
-    rename("temp.dat", "accounts.dat");
+
     if (found) {
+        // Re-write all remaining accounts back to the file
+        ofstream outFile("accounts.dat", ios::binary | ios::trunc);  // Clear file and rewrite
+        for (const auto& account : accounts) {
+            account.writeToFile(outFile);
+        }
         cout << "Account deleted successfully!\n";
     } else {
         cout << "Account not found!\n";
