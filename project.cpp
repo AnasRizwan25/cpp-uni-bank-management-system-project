@@ -64,8 +64,8 @@ public:
         return accountHolderName;
     }
 
-    // Serialization: Function to write account data to file
-    void writeToFile(ofstream& outFile) const {
+    // Function to write account data to a binary file
+    void writeToFile(ofstream &outFile) const {
         int nameLength = accountHolderName.length();
         outFile.write(reinterpret_cast<const char*>(&accountNumber), sizeof(accountNumber));
         outFile.write(reinterpret_cast<const char*>(&nameLength), sizeof(nameLength));
@@ -73,8 +73,8 @@ public:
         outFile.write(reinterpret_cast<const char*>(&balance), sizeof(balance));
     }
 
-    // Deserialization: Function to read account data from file
-    void readFromFile(ifstream& inFile) {
+    // Function to read account data from a binary file
+    void readFromFile(ifstream &inFile) {
         int nameLength;
         inFile.read(reinterpret_cast<char*>(&accountNumber), sizeof(accountNumber));
         inFile.read(reinterpret_cast<char*>(&nameLength), sizeof(nameLength));
@@ -155,13 +155,14 @@ void displayAccount(int accNum) {
         cout << "File could not be opened!\n";
         return;
     }
-    while (inFile) {
+    while (true) {
         account.readFromFile(inFile);
         if (inFile && account.getAccountNumber() == accNum) {
             account.displayAccount();
             found = true;
             break;
         }
+        if (inFile.eof()) break;
     }
     inFile.close();
     if (!found) {
